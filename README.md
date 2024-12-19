@@ -5,7 +5,7 @@
 ``
 go env -w GO111MODULE=off
 cd main 
-go build -o walrus-tar
+go build -o ../release/walrus-tar
 ./walrus-tar
 ``
 
