@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var enableDebug = true
+var enableDebug = false
 
 func debug(a ...any) {
 	if enableDebug {

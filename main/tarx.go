@@ -25,7 +25,7 @@ func writeEntry(fi fs.FileInfo, tr io.Reader, path string, out string) {
 	debug("wirte path,target:", path, target)
 	if fi.IsDir() {
 		e := os.MkdirAll(target, fi.Mode().Perm())
-		if e == nil {
+		if e != nil {
 			log.Fatal("ERROR CREATE", target, fi.Mode().Perm())
 		}
 		debug("mkdir target,perm:", target, fi.Mode().Perm())
@@ -34,7 +34,7 @@ func writeEntry(fi fs.FileInfo, tr io.Reader, path string, out string) {
 
 	var dir = filepath.Dir(target)
 	debug("dir=", dir)
-	e2 := os.MkdirAll(dir, os.ModePerm)
+	e2 := os.MkdirAll(dir, fi.Mode().Perm())
 	ErrPrintln(e2)
 	// 创建一个空文件，用来写入解包后的数据
 	fw, err := os.Create(target)
@@ -63,7 +63,7 @@ func extractFile(fr io.Reader, pathInTar string, out string) {
 		// 获取文件信息
 		fi := hdr.FileInfo()
 		debug("extract fi,hdr:", fi.Name(), hdr.Name)
-		if hdr.Name == pathInTar {
+		if strings.HasPrefix(hdr.Name, pathInTar) {
 			writeEntry(fi, tr, hdr.Name, out)
 		}
 	}

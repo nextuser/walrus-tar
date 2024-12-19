@@ -185,12 +185,12 @@ func store(c *http.Client, url string, from string) {
 
 }
 
-var blobId = flag.String("blob-id", "", "{blob-id}")
-var pathInTar = flag.String("path", "", "path in tar file")
-var out = flag.String("out", "", "output file")
-var from_path = flag.String("from", "", "from dir")
+var blobId = flag.String("blob-id", "", "{blob-id}, required when action=read or list ")
+var pathInTar = flag.String("path", "", "path in tar file,,used when action=read")
+var out = flag.String("out", "", "output file,,used when action=read")
+var from_path = flag.String("from", "", "source file or directory ,  required when action=store")
 var action = flag.String("action", "read", "read|store|list")
-var epochs = flag.Int("epochs", 1, "epoch number")
+var epochs = flag.Int("epochs", 1, "epoch number,used when action=store")
 
 /*
 *
@@ -232,8 +232,9 @@ func main() {
 	flag.Usage = func() {
 
 		fmt.Fprintf(os.Stderr, "使用方式: %s  store| read [选项]\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s  -action=read -blob-id {blobid} -path {path in tar} -out {output file} \n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s  -action=store -from  {file list} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -action list -blob-id {blobid} -out {output file} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -action read -blob-id {blobid} -path {path in tar} -out {output file} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -action store -from  {file list} \n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "选项:\n")
 
 		flag.PrintDefaults()
