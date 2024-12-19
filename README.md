@@ -13,7 +13,7 @@ go build -o ../release/walrus-tar
 
 ```test
 go env -w GO111MODULE=off
-cd tar
+cd main
 go test
 
 ```

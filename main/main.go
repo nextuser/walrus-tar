@@ -17,15 +17,6 @@ import (
 	"unsafe"
 )
 
-var enableDebug = false
-
-func debug(a ...any) {
-	if enableDebug {
-		fmt.Println(a...)
-	}
-
-}
-
 var wc sync.WaitGroup
 
 func getHttpClient() *http.Client {
@@ -33,6 +24,11 @@ func getHttpClient() *http.Client {
 		Timeout: time.Second * 600,
 	}
 }
+
+/*
+*
+https client
+*/
 func getHttpsClient() *http.Client {
 	var tlsConfig *tls.Config
 
@@ -83,29 +79,39 @@ func getHttpsClient() *http.Client {
 	return &http.Client{Transport: transport}
 }
 
-func process(body io.Reader, out string) {
-
-	var written int64 = 0
-	var write_err error = nil
+func getOutFile(out string) *os.File {
+	var outFile *os.File = nil
 	if len(out) == 0 {
-		written, write_err = io.Copy(os.Stdout, body)
+		outFile = os.Stdout
 	} else {
 		var file, openErr = os.OpenFile(out, os.O_WRONLY|os.O_CREATE, 0664)
 		if openErr != nil {
 			debug(openErr)
-			return
+			os.Exit(1)
 		}
-
-		written, write_err = io.Copy(file, body)
+		outFile = file
 	}
+	return outFile
+}
 
-	if write_err != nil {
-		fmt.Println("Write error:", write_err)
-	} else {
-		fmt.Printf("write in file %s, %d bytes", out, written)
+/*
+*
+read file from the walrus,process read blob data
+
+func extractFile(fr io.Reader, pathInTar string, out string)
+*/
+func process(body io.Reader, action string, pathInTar string, out string) {
+
+	if action == "read" && len(pathInTar) == 0 {
+		_, write_err := io.Copy(getOutFile(out), body)
+		ErrPrintln(write_err)
+	} else if action == "read" {
+		extractFile(body, pathInTar, out)
+	} else if action == "list" {
+		listFilesInTar(body, getOutFile(out))
 	}
 }
-func read(c *http.Client, url string, out string) {
+func read(c *http.Client, url string, action string, pathInTar string, out string) {
 	fmt.Println("url=", url)
 	defer wc.Done()
 
@@ -114,7 +120,7 @@ func read(c *http.Client, url string, out string) {
 		debug(err)
 	} else {
 		if response.StatusCode == 200 {
-			process(response.Body, out)
+			process(response.Body, action, pathInTar, out)
 		}
 		debug(response)
 	}
@@ -150,27 +156,19 @@ func store(c *http.Client, url string, from string) {
 		return
 	}
 
-	var data []byte
-	if _, err := os.Lstat(from); err == nil {
-		file, _ := os.Open(from)
-		defer file.Close()
-
-		data, _ = io.ReadAll(file)
-	} else {
-		log.Fatal("file not exist")
-		return
-	}
-
 	debug("post:", url)
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
-	var data_len = len(data)
-	debug("data length:", data_len)
+	// from file or dir  => pipe => tar =>  http.request.body
+	var buf bytes.Buffer
+	TarWrite(from, &buf)
+
+	debug("begin new request")
+	req, err := http.NewRequest("PUT", url, &buf)
 
 	if err == nil {
 		if rep, err := c.Do(req); err == nil {
 			content, _ := io.ReadAll(rep.Body)
-			debug("get response: " + string(content))
+			fmt.Println("get response: \n" + string(content))
 			var response StoreResponse
 			json.Unmarshal(content, &response)
 			fmt.Println("unmarshal response:")
@@ -191,7 +189,7 @@ var blobId = flag.String("blob-id", "", "{blob-id}")
 var pathInTar = flag.String("path", "", "path in tar file")
 var out = flag.String("out", "", "output file")
 var from_path = flag.String("from", "", "from dir")
-var action = flag.String("action", "read", "read|store")
+var action = flag.String("action", "read", "read|store|list")
 var epochs = flag.Int("epochs", 1, "epoch number")
 
 /*
@@ -218,7 +216,7 @@ func main() {
 			if len(*from_path) == 0 {
 				parseFail = true
 			}
-		} else if *action == "read" {
+		} else if *action == "read" || *action == "list" {
 
 			if *blobId == "" {
 				parseFail = true
@@ -253,9 +251,9 @@ func main() {
 	wc.Add(1)
 
 	client := getHttpsClient()
-	if *action == "read" {
+	if *action == "read" || *action == "list" {
 		var url = AGGREGATOR + "/v1/" + *blobId
-		read(client, url, *out)
+		read(client, url, *action, *pathInTar, *out)
 	} else if *action == "store" {
 		var url = PUBLISHER + "/v1/store?epochs=" + strconv.Itoa(*epochs)
 		store(client, url, *from_path)
