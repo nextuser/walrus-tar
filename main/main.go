@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,71 +11,10 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 	"unsafe"
 )
 
 var wc sync.WaitGroup
-
-func getHttpClient() *http.Client {
-	return &http.Client{
-		Timeout: time.Second * 600,
-	}
-}
-
-/*
-*
-https client
-*/
-func getHttpsClient() *http.Client {
-	var tlsConfig *tls.Config
-
-	switch os.Getenv("AUTH_TYPE") {
-	case "mtls":
-		debug("AUTH_TYPE set as mtls")
-		cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
-		if err != nil {
-			panic(err)
-		}
-		caCert, err := os.ReadFile("cacert.pem")
-		if err != nil {
-			panic(err)
-		}
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			RootCAs:      caCertPool,
-		}
-
-	case "tls":
-		debug("AUTH_TYPE set as tls")
-		caCert, err := os.ReadFile("cacert.pem")
-		if err != nil {
-			panic(err)
-		}
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		tlsConfig = &tls.Config{
-			RootCAs: caCertPool,
-		}
-
-	default:
-		debug("Insecure communication selected, skipping server verification")
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-	}
-
-	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
-		MaxIdleConns:    10,
-		IdleConnTimeout: 600 * time.Second,
-	}
-	return &http.Client{Transport: transport}
-}
 
 func getOutFile(out string) *os.File {
 	var outFile *os.File = nil
@@ -104,7 +41,7 @@ func process(body io.Reader, action string, pathInTar string, out string) {
 
 	if action == "read" && len(pathInTar) == 0 {
 		_, write_err := io.Copy(getOutFile(out), body)
-		ErrPrintln(write_err)
+		log.Fatalln(write_err)
 	} else if action == "read" {
 		extractFile(body, pathInTar, out)
 	} else if action == "list" {
@@ -112,12 +49,12 @@ func process(body io.Reader, action string, pathInTar string, out string) {
 	}
 }
 func read(c *http.Client, url string, action string, pathInTar string, out string) {
-	fmt.Println("url=", url)
+	info("url=", url)
 	defer wc.Done()
 
 	var response, err = c.Get(url)
 	if err != nil {
-		debug(err)
+		log.Fatalln(err)
 	} else {
 		if response.StatusCode == 200 {
 			process(response.Body, action, pathInTar, out)
@@ -147,8 +84,14 @@ func Bytes2String(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
+func info(args ...any) {
+	if *verbose >= 1 {
+		fmt.Println(args...)
+	}
+}
+
 func store(c *http.Client, url string, from string) {
-	fmt.Println("url=", url)
+	info("url=", url)
 	defer wc.Done()
 
 	if c == nil {
@@ -168,13 +111,13 @@ func store(c *http.Client, url string, from string) {
 	if err == nil {
 		if rep, err := c.Do(req); err == nil {
 			content, _ := io.ReadAll(rep.Body)
-			fmt.Println("get response: \n" + string(content))
+			info("get response: \n" + string(content))
 			var response StoreResponse
 			json.Unmarshal(content, &response)
-			fmt.Println("unmarshal response:")
-			fmt.Println("txDigest:", response.Certified.EventOrObject.Event.TxDigest)
-			fmt.Println("blobId:", response.Certified.BlobId)
-			fmt.Println("endEpoch:", response.Certified.EndEpoch)
+			// fmt.Println("unmarshal response:")
+			// fmt.Println("txDigest:", response.Certified.EventOrObject.Event.TxDigest)
+			// fmt.Println("blobId:", response.Certified.BlobId)
+			// fmt.Println("endEpoch:", response.Certified.EndEpoch)
 			rep.Body.Close()
 		} else {
 			log.Fatal(err)
@@ -185,23 +128,26 @@ func store(c *http.Client, url string, from string) {
 
 }
 
-var blobId = flag.String("blob-id", "", "{blob-id}, required when action=read or list ")
-var pathInTar = flag.String("path", "", "path in tar file,,used when action=read")
-var out = flag.String("out", "", "output file,,used when action=read")
-var from_path = flag.String("from", "", "source file or directory ,  required when action=store")
-var action = flag.String("action", "read", "read|store|list")
-var epochs = flag.Int("epochs", 1, "epoch number,used when action=store")
+var blobId = flag.String("b", "", "{blob}, required when action=read or list ")
+var pathInTar = flag.String("p", "", "path in tar file,,used when action=read")
+var out = flag.String("o", "", "output file,,used when action=read")
+var from_path = flag.String("f", "", "source file or directory ,  required when action=store")
+var action = flag.String("c", "read", "read|store|list")
+var epochs = flag.Int("e", 1, "epoch number,used when action=store")
+var verbose = flag.Int("v", 1, "verbose 0|1|2")
 
 /*
 *
-go run main/main.go -action=store -from=go.mod -epochs=3
-go run main/main.go -action=read -blob-id=gTZQ1xeTlgY9NG7QSLDWra5uaXIcV5NCDRJcPpQTkFY -out a.tar -path  /d/a.txt
+go run main/main.go -c=store -f=go.mod -e=3
+go run main/main.go -c=read -b=gTZQ1xeTlgY9NG7QSLDWra5uaXIcV5NCDRJcPpQTkFY -o a.tar -p  /d/a.txt
 */
 func main() {
 	//store
 	var parseFail bool = false
 	flag.Parse()
-
+	if *verbose == 2 {
+		enableDebug(true)
+	}
 	debug("blobId=", *blobId)
 	debug("action=", *action)
 	debug("from=", *from_path)
@@ -231,10 +177,10 @@ func main() {
 	// 自定义帮助信息
 	flag.Usage = func() {
 
-		fmt.Fprintf(os.Stderr, "使用方式: %s  store| read [选项]\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s  -action list -blob-id {blobid} -out {output file} \n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s  -action read -blob-id {blobid} -path {path in tar} -out {output file} \n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s  -action store -from  {file list} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "使用方式:", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -c list -b {blob id} -o {output file} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -c read -b {blob id} -p {path in tar} -o {output file/dir} \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s  -c store -f  {file list} \n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "选项:\n")
 
 		flag.PrintDefaults()

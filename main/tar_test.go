@@ -15,16 +15,15 @@ func Test_Tar(t *testing.T) {
 	var dst = fmt.Sprintf("%s.tar", src)
 
 	// 将步骤写入了一个函数中，这样处理错误方便一些
-	if err := TarFile(src, dst); err != nil {
-		log.Fatalln(err)
-	}
+	err := TarFile(src, dst)
+	PrintError(err)
 }
 
 // func extractFile(fr io.Reader, pathInTar string, out string) {
 func Test_Extract(t *testing.T) {
 	log.Println("extract file")
 	f, e := os.OpenFile("./data/apt.tar", os.O_RDONLY, os.ModePerm)
-	ErrPrintln(e)
+	PrintError(e)
 	r := bufio.NewReader(f)
 
 	extractFile(r, "apt/a", "data/other")
@@ -33,7 +32,7 @@ func Test_Extract(t *testing.T) {
 
 func Test_List(t *testing.T) {
 	f, e := os.OpenFile("./data/apt.tar", os.O_RDONLY, os.ModePerm)
-	ErrPrintln(e)
+	PrintError(e)
 	var reader = bufio.NewReader(f)
 
 	listFilesInTar(reader, os.Stdout)

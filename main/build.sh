@@ -1,1 +1,1 @@
-go build -o ../release/walrus-tar
+go build -o ../release/wtar
